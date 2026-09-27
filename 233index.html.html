@@ -1,0 +1,1444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SpectraGuard™ SG-1700X — Inline Industrial Hyperspectral Screening & Isolation System</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Three.js & OrbitControls -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <!-- Chart.js for real-time spectral curve plotting -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.263.1/dist/umd/lucide.min.js"></script>
+  
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+    
+    :root {
+      --bg-dark: #070b12;
+      --panel-dark: rgba(13, 20, 32, 0.90);
+      --border-steel: rgba(71, 85, 105, 0.45);
+      --accent-cyan: #38bdf8;
+      --accent-safe: #10b981;
+      --accent-warn: #f59e0b;
+      --accent-danger: #ef4444;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg-dark);
+      color: #f1f5f9;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .scada-panel {
+      background: var(--panel-dark);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border-steel);
+      box-shadow: 0 12px 35px -5px rgba(0, 0, 0, 0.75), 0 0 20px rgba(56, 189, 248, 0.05);
+    }
+
+    .annotation-marker {
+      pointer-events: auto;
+      transform: translate(-50%, -50%);
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .annotation-marker:hover {
+      transform: translate(-50%, -50%) scale(1.1);
+    }
+
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.6); }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+  </style>
+</head>
+<body class="w-screen h-screen m-0 p-0 relative">
+
+  <!-- 3D Canvas Viewport -->
+  <div id="canvas-container" class="absolute inset-0 w-full h-full z-0"></div>
+
+  <!-- Screen-projected 3D HUD Labels -->
+  <div id="labels-container" class="absolute inset-0 pointer-events-none z-10 overflow-hidden"></div>
+
+  <!-- On-Screen Engineering Demonstration Banner -->
+  <div id="engineering-narrative-banner" class="absolute top-20 left-1/2 -translate-x-1/2 z-40 w-11/12 max-w-2xl scada-panel rounded-xl p-3.5 border-cyan-500/70 shadow-2xl transition-all duration-300 hidden">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center space-x-2">
+        <span class="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping"></span>
+        <span class="text-xs font-mono font-bold tracking-wider text-cyan-300 uppercase" id="demo-step-title">STAGE 01: SYSTEM CALIBRATION & INLINE FEED</span>
+      </div>
+      <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900 text-cyan-400 border border-slate-700" id="demo-timer-txt">T: 00s / 65s</span>
+    </div>
+    <p class="text-xs font-sans text-slate-200 mt-1.5 leading-relaxed" id="demo-step-desc">
+      Establishing broad perspective of the food-grade stainless conveyor line, smart hyperspectral sensor head, and automated pneumatic isolation diverter.
+    </p>
+  </div>
+
+  <!-- Top Industrial SCADA Header -->
+  <header class="absolute top-0 left-0 right-0 z-30 h-16 scada-panel border-t-0 border-x-0 px-5 flex items-center justify-between">
+    <div class="flex items-center space-x-4">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-lg bg-slate-900 border border-cyan-500/50 flex items-center justify-center text-cyan-400 font-mono font-bold text-lg shadow-sm shadow-cyan-500/20">
+          SG
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <h1 class="text-sm font-bold tracking-wider uppercase text-white font-mono">SPECTRAGUARD™</h1>
+            <span class="px-1.5 py-0.5 text-[10px] font-mono font-semibold rounded bg-slate-800 text-cyan-300 border border-cyan-500/40">SG-1700X</span>
+            <span class="px-1.5 py-0.5 text-[10px] font-mono rounded bg-emerald-950 text-emerald-300 border border-emerald-700">INLINE PRODUCTION PROTOTYPE</span>
+          </div>
+          <p class="text-[11px] text-slate-400 font-sans">Automated Hyperspectral Surface Screening & High-Speed Pneumatic Isolation</p>
+        </div>
+      </div>
+
+      <!-- State Machine Stage Indicators -->
+      <div class="hidden xl:flex items-center space-x-1 pl-4 border-l border-slate-700/60 text-[10px] font-mono" id="fsm-status-strip">
+        <span class="text-slate-400 mr-1">PROCESS FSM:</span>
+        <span id="fsm-idle" class="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold">STANDBY</span>
+        <span class="text-slate-600">&rarr;</span>
+        <span id="fsm-detect" class="px-2 py-0.5 rounded bg-slate-900 text-slate-500 border border-slate-800">PHOTO_TRIGGER</span>
+        <span class="text-slate-600">&rarr;</span>
+        <span id="fsm-scan" class="px-2 py-0.5 rounded bg-slate-900 text-slate-500 border border-slate-800">SWIR_LINE_SCAN</span>
+        <span class="text-slate-600">&rarr;</span>
+        <span id="fsm-ai" class="px-2 py-0.5 rounded bg-slate-900 text-slate-500 border border-slate-800">EDGE_INFERENCE</span>
+        <span class="text-slate-600">&rarr;</span>
+        <span id="fsm-decide" class="px-2 py-0.5 rounded bg-slate-900 text-slate-500 border border-slate-800">PLC_DECISION</span>
+        <span class="text-slate-600">&rarr;</span>
+        <span id="fsm-reject" class="px-2 py-0.5 rounded bg-slate-900 text-slate-500 border border-slate-800">AIR_JET_ACTUATE</span>
+      </div>
+    </div>
+
+    <div class="flex items-center space-x-2">
+      <!-- Prototype Demonstration Sequence Button -->
+      <button id="btn-run-demo" class="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-700 hover:from-cyan-500 hover:to-blue-600 text-white text-xs font-mono font-bold flex items-center space-x-1.5 shadow-lg shadow-cyan-950/50 border border-cyan-400/50 transition">
+        <i data-lucide="play-circle" class="w-4 h-4"></i>
+        <span>PROTOTYPE DEMONSTRATION</span>
+      </button>
+
+      <!-- View Presets -->
+      <div class="bg-slate-900/90 p-1 rounded-lg border border-slate-700 flex text-xs font-mono">
+        <button id="view-overview" class="px-2 py-1 rounded text-slate-300 hover:text-white" title="Line Overview">Overview</button>
+        <button id="view-sensor" class="px-2 py-1 rounded text-slate-300 hover:text-white" title="Sensor Head Close-up">Sensor Head</button>
+        <button id="view-cutaway" class="px-2 py-1 rounded text-slate-300 hover:text-white" title="Optics & Beams">Optics</button>
+        <button id="view-rejector" class="px-2 py-1 rounded text-slate-300 hover:text-white" title="Pneumatic Isolation">Diverter</button>
+      </div>
+
+      <!-- Exploded View Toggle -->
+      <button id="btn-toggle-exploded" class="px-2.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-mono flex items-center space-x-1">
+        <i data-lucide="layers" class="w-3.5 h-3.5 text-cyan-400"></i>
+        <span id="exploded-label">Exploded View</span>
+      </button>
+
+      <!-- Speed & Simulation Controls -->
+      <div class="flex items-center space-x-1 pl-1">
+        <select id="speed-select" class="bg-slate-900 border border-slate-700 text-xs font-mono text-cyan-300 rounded px-2 py-1 focus:outline-none">
+          <option value="0.25">0.25x</option>
+          <option value="0.5">0.5x</option>
+          <option value="1.0" selected>1.0x</option>
+          <option value="2.0">2.0x</option>
+        </select>
+        <button id="btn-play-pause" class="p-1.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-cyan-300" title="Play/Pause Line">
+          <i data-lucide="pause" class="w-4 h-4"></i>
+        </button>
+        <button id="btn-reset" class="p-1.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300" title="Reset Counter">
+          <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+        </button>
+        <button id="btn-fullscreen" class="p-1.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300" title="Toggle Fullscreen">
+          <i data-lucide="maximize" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Left Side: Interactive Feed Controls & Real-Time Telemetry -->
+  <aside class="absolute top-20 left-5 z-20 flex flex-col space-y-3 pointer-events-none" style="width: 22rem;">
+    
+    <!-- Manual Product Ingestion & Testing Station -->
+    <div class="scada-panel rounded-xl p-3.5 pointer-events-auto">
+      <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-700/60">
+        <span class="text-xs font-bold font-mono tracking-wider text-slate-200 flex items-center">
+          <i data-lucide="sliders" class="w-3.5 h-3.5 mr-1.5 text-cyan-400"></i>FEEDLINE CONTROLS
+        </span>
+        <span class="text-[9.5px] font-mono text-cyan-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">MANUAL OVERRIDE</span>
+      </div>
+
+      <!-- Food Substrate Category -->
+      <div class="mb-2.5">
+        <label class="text-[10px] font-mono text-slate-400 block mb-1">FOOD MATRIX SELECTION</label>
+        <div class="grid grid-cols-3 gap-1 text-[11px] font-mono">
+          <button id="sub-poultry" class="py-1 px-1 rounded bg-cyan-950/80 border border-cyan-500/60 text-cyan-300 font-medium">Poultry Fillet</button>
+          <button id="sub-greens" class="py-1 px-1 rounded bg-slate-800/80 border border-slate-700 text-slate-300 hover:bg-slate-700">Fresh Greens</button>
+          <button id="sub-bakery" class="py-1 px-1 rounded bg-slate-800/80 border border-slate-700 text-slate-300 hover:bg-slate-700">Bakery Goods</button>
+        </div>
+      </div>
+
+      <!-- Injection Trigger Buttons -->
+      <div class="mb-2.5">
+        <label class="text-[10px] font-mono text-slate-400 block mb-1">INJECT SPECIFIC TEST SAMPLE</label>
+        <div class="grid grid-cols-3 gap-1.5 text-xs font-mono">
+          <button id="btn-inject-normal" class="py-1.5 px-1 rounded bg-emerald-950/70 hover:bg-emerald-900 border border-emerald-500/60 text-emerald-300 font-semibold flex items-center justify-center transition">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1"></span>NORMAL
+          </button>
+          <button id="btn-inject-suspect" class="py-1.5 px-1 rounded bg-amber-950/70 hover:bg-amber-900 border border-amber-500/60 text-amber-300 font-semibold flex items-center justify-center transition">
+            <span class="w-1.5 h-1.5 rounded-full bg-amber-400 mr-1"></span>SUSPECT
+          </button>
+          <button id="btn-inject-highrisk" class="py-1.5 px-1 rounded bg-rose-950/70 hover:bg-rose-900 border border-rose-500/70 text-rose-300 font-semibold flex items-center justify-center transition shadow-sm shadow-rose-950 animate-pulse">
+            <span class="w-1.5 h-1.5 rounded-full bg-rose-400 mr-1"></span>HIGH-RISK
+          </button>
+        </div>
+      </div>
+
+      <div class="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px] font-mono text-slate-400">
+        <span>Continuous Line Infeed:</span>
+        <label class="inline-flex items-center cursor-pointer">
+          <input type="checkbox" id="toggle-autoloader" class="sr-only" checked>
+          <div id="autoloader-toggle-visual" class="w-8 h-4 bg-cyan-600 rounded-full relative transition-colors">
+            <div id="autoloader-knob" class="w-3.5 h-3.5 bg-white rounded-full absolute top-[1px] right-[1px] transition-transform"></div>
+          </div>
+        </label>
+      </div>
+    </div>
+
+    <!-- Edge AI Inference Engine & Telemetry Card -->
+    <div class="scada-panel rounded-xl p-3.5 pointer-events-auto">
+      <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-700/60">
+        <span class="text-xs font-bold font-mono tracking-wider text-slate-200 flex items-center">
+          <i data-lucide="cpu" class="w-3.5 h-3.5 mr-1.5 text-cyan-400"></i>EDGE AI INFERENCE TELEMETRY
+        </span>
+        <span class="text-[9.5px] font-mono text-emerald-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">
+          TENSORRT INT8
+        </span>
+      </div>
+
+      <!-- Live JSON Telemetry Stream -->
+      <div class="p-2 bg-slate-950 rounded-lg border border-slate-800 font-mono text-[10.5px]">
+        <div class="flex justify-between text-[9px] text-slate-500 pb-1 border-b border-slate-800/80 mb-1">
+          <span>REAL-TIME SCADA TELEMETRY</span>
+          <span class="text-cyan-400">LATENCY: 8.42 ms</span>
+        </div>
+        <pre id="telemetry-json" class="text-cyan-300 leading-tight overflow-x-auto whitespace-pre">{
+  "productId": "SG-000428",
+  "state": "STANDBY",
+  "anomalyScore": 0.00,
+  "riskIndex": 0.00,
+  "confidence": 0.96,
+  "inspectionAction": "NONE"
+}</pre>
+      </div>
+
+      <!-- Current Decision Card -->
+      <div class="mt-3 p-2.5 rounded-lg bg-slate-900/90 border border-slate-800" id="live-eval-card">
+        <div class="flex justify-between items-center text-[10px] font-mono text-slate-400">
+          <span>CURRENT TARGET: <strong id="eval-product-id" class="text-cyan-300">SG-000000</strong></span>
+          <span id="eval-status-badge" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">STANDBY</span>
+        </div>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span class="text-xs font-mono text-slate-300">Surface Risk Index:</span>
+          <span id="eval-risk-score" class="text-xl font-bold font-mono text-slate-400">--%</span>
+        </div>
+        <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden mt-1 relative">
+          <div id="eval-risk-bar" class="h-full bg-emerald-500 transition-all duration-300" style="width: 0%;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Engineering Compliance & Operational Notice -->
+    <div class="scada-panel rounded-xl p-2.5 text-[9.5px] font-mono text-slate-400 leading-tight">
+      <div class="flex items-center text-cyan-400 font-semibold mb-1">
+        <i data-lucide="shield-alert" class="w-3 h-3 mr-1"></i>OPERATIONAL NOTICE
+      </div>
+      Rapid optical screening system. Spectral anomalies indicate biochemical deviations requiring secondary laboratory validation (PCR / microbiological culturing).
+    </div>
+  </aside>
+
+  <!-- Bottom Status Bar & Audit Trail Log -->
+  <footer class="absolute bottom-0 left-0 right-0 z-20 h-12 scada-panel border-b-0 border-x-0 px-5 flex items-center justify-between font-mono text-xs">
+    <div class="flex items-center space-x-3 overflow-hidden">
+      <div class="flex items-center text-slate-400 space-x-1.5 shrink-0">
+        <i data-lucide="terminal" class="w-4 h-4 text-cyan-400"></i>
+        <span class="font-bold text-slate-200">PLC LOG:</span>
+      </div>
+      <div id="log-marquee" class="text-slate-300 truncate text-[11px] font-mono">
+        SpectraGuard SG-1700X operational. SICK optical shaft encoder 1024 PPR calibrated. Gantry aligned at 180mm standoff.
+      </div>
+    </div>
+
+    <div class="flex items-center space-x-2 shrink-0">
+      <button id="btn-open-pipeline" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center space-x-1 transition text-[11px]">
+        <i data-lucide="git-branch" class="w-3.5 h-3.5 text-cyan-400"></i>
+        <span>Signal Flow</span>
+      </button>
+      <button id="btn-open-specs" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center space-x-1 transition text-[11px]">
+        <i data-lucide="info" class="w-3.5 h-3.5 text-cyan-400"></i>
+        <span>System BOM</span>
+      </button>
+    </div>
+  </footer>
+
+  <!-- Engineering Pipeline Modal -->
+  <div id="modal-pipeline" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex items-center justify-center p-6">
+    <div class="scada-panel w-full max-w-4xl rounded-2xl p-6 border-slate-700 shadow-2xl relative">
+      <div class="flex justify-between items-center pb-3 border-b border-slate-700">
+        <div class="flex items-center space-x-2">
+          <div class="p-2 rounded bg-slate-900 border border-cyan-500 text-cyan-400">
+            <i data-lucide="workflow" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h2 class="text-base font-bold font-mono text-white">SPECTRAGUARD SG-1700X // PHYSICAL-TO-DIGITAL ARCHITECTURE</h2>
+            <p class="text-xs text-slate-400">Inline Optical Surface Screening with Deterministic Pneumatic Triage</p>
+          </div>
+        </div>
+        <button id="btn-close-pipeline" class="text-slate-400 hover:text-white p-1 rounded-lg">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="py-5 grid grid-cols-1 md:grid-cols-4 gap-3 text-xs font-mono">
+        <div class="p-3 rounded-lg bg-slate-900/90 border border-slate-800">
+          <div class="text-cyan-400 font-bold mb-1">STAGE 1: OPTICAL ACQUISITION</div>
+          <p class="text-slate-300 text-[11px] leading-relaxed">
+            Product passes beneath controlled broadband NIR halogen arrays and 365nm UV-A LEDs inside a blackout tunnel. Pushbroom InGaAs FPA linescan sensor records 224 spectral bands across 900–1700nm.
+          </p>
+        </div>
+        <div class="p-3 rounded-lg bg-slate-900/90 border border-slate-800">
+          <div class="text-cyan-400 font-bold mb-1">STAGE 2: EDGE INFERENCE</div>
+          <p class="text-slate-300 text-[11px] leading-relaxed">
+            NVIDIA Jetson AGX Orin Industrial executes radiometric calibration, SNV normalization, and 1D-CNN chemometric spectral anomaly modeling in &lt;10ms per product without line stoppage.
+          </p>
+        </div>
+        <div class="p-3 rounded-lg bg-slate-900/90 border border-slate-800">
+          <div class="text-amber-400 font-bold mb-1">STAGE 3: PLC POSITION TRACKING</div>
+          <p class="text-slate-300 text-[11px] leading-relaxed">
+            PROFINET telegram transmits risk tier to Siemens S7-1200 PLC. SICK 1024 PPR incremental rotary encoder tracks belt travel with 0.184mm resolution, timing arrival at the downstream nozzle with microsecond precision.
+          </p>
+        </div>
+        <div class="p-3 rounded-lg bg-slate-900/90 border border-slate-800">
+          <div class="text-rose-400 font-bold mb-1">STAGE 4: AUTOMATED DIVERSION</div>
+          <p class="text-slate-300 text-[11px] leading-relaxed">
+            Festo fast-switching 5/2 solenoid valve activates twin brass venturi air nozzles, non-destructively deflecting suspect product into a 316 stainless quarantine hopper for confirmatory laboratory testing.
+          </p>
+        </div>
+      </div>
+
+      <div class="p-3 bg-slate-900/80 border border-slate-800 rounded-lg text-[11px] font-mono text-slate-300">
+        <strong>Confirmatory Quality Control Loop:</strong> Quarantined items undergo secondary microbiological laboratory validation (PCR / culture confirmation). Confirmed pathogen spectrum variations feed into iterative chemometric active-learning refinement.
+      </div>
+    </div>
+  </div>
+
+  <!-- Engineering Specs / BOM Modal -->
+  <div id="modal-specs" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex items-center justify-center p-6">
+    <div class="scada-panel w-full max-w-3xl rounded-2xl p-6 border-slate-700 shadow-2xl relative">
+      <div class="flex justify-between items-center pb-3 border-b border-slate-700">
+        <div class="flex items-center space-x-2">
+          <div class="p-2 rounded bg-slate-900 border border-cyan-500 text-cyan-400">
+            <i data-lucide="wrench" class="w-5 h-5"></i>
+          </div>
+          <h2 class="text-base font-bold font-mono text-white">ENGINEERING BILL OF MATERIALS & HARDWARE SPECIFICATIONS</h2>
+        </div>
+        <button id="btn-close-specs" class="text-slate-400 hover:text-white p-1 rounded-lg">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="py-4 space-y-2.5 text-xs font-mono">
+        <div class="p-2.5 bg-slate-900/90 rounded border border-slate-800 flex justify-between items-center">
+          <div>
+            <span class="text-cyan-400 font-bold">Pushbroom SWIR Hyperspectral Camera:</span>
+            <p class="text-[11px] text-slate-400">InGaAs Focal Plane Array, 900–1700nm, 224 spectral channels, 3.5nm FWHM, TEC-cooled -15°C.</p>
+          </div>
+          <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px]">GigE Vision / CoaXPress</span>
+        </div>
+        <div class="p-2.5 bg-slate-900/90 rounded border border-slate-800 flex justify-between items-center">
+          <div>
+            <span class="text-rose-400 font-bold">Dual Stabilized NIR & UV-A Array:</span>
+            <p class="text-[11px] text-slate-400">45° broadband DC-stabilized tungsten-halogen cross-bars + 365nm narrow-band solid-state LEDs.</p>
+          </div>
+          <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px]">Sapphire AR Window</span>
+        </div>
+        <div class="p-2.5 bg-slate-900/90 rounded border border-slate-800 flex justify-between items-center">
+          <div>
+            <span class="text-indigo-400 font-bold">Industrial Edge Processing Engine:</span>
+            <p class="text-[11px] text-slate-400">NVIDIA Jetson AGX Orin Industrial (275 TOPS, IP66 stainless housing, TensorRT INT8 inference).</p>
+          </div>
+          <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px]">Latency &lt; 10ms</span>
+        </div>
+        <div class="p-2.5 bg-slate-900/90 rounded border border-slate-800 flex justify-between items-center">
+          <div>
+            <span class="text-amber-400 font-bold">Rotary Encoder & Deterministic PLC:</span>
+            <p class="text-[11px] text-slate-400">Siemens S7-1200 Fail-safe PLC + SICK DBS60 1024 PPR optical shaft encoder on tail roller.</p>
+          </div>
+          <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px]">PROFINET Real-Time</span>
+        </div>
+        <div class="p-2.5 bg-slate-900/90 rounded border border-slate-800 flex justify-between items-center">
+          <div>
+            <span class="text-emerald-400 font-bold">Pneumatic Air-Jet Diverter:</span>
+            <p class="text-[11px] text-slate-400">Festo fast-switching 5/2 valve (2.5ms response), dual brass venturi blow-off nozzles (6.0 bar dry air).</p>
+          </div>
+          <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px]">Non-Destructive Triage</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* Finite State Machine Stages */
+    const SIM_FSM = {
+      IDLE: 'IDLE',
+      PRODUCT_DETECTED: 'PRODUCT_DETECTED',
+      SCANNING: 'SCANNING',
+      SPECTRAL_ANALYSIS: 'SPECTRAL_ANALYSIS',
+      AI_INFERENCE: 'AI_INFERENCE',
+      DECISION: 'DECISION',
+      REJECT: 'REJECT',
+      LOG_RESULT: 'LOG_RESULT'
+    };
+
+    /* Global Simulation State Object */
+    const STATE = {
+      running: true,
+      speed: 1.0,
+      currentState: SIM_FSM.IDLE,
+      exploded: false,
+      explodedProgress: 0,
+      substrateType: 'poultry',
+      autoloader: true,
+      spawnTimer: 0,
+      spawnInterval: 2.3,
+      conveyorSpeed: 1.20,
+      productCounter: 427,
+      scannedCount: 14892,
+      normalCount: 14845,
+      suspectCount: 34,
+      isolatedCount: 13,
+      activeScannedProduct: null,
+      targetedProduct: null,
+      demoActive: false,
+      demoTimer: 0,
+      demoPhase: 0
+    };
+
+    /* Physical metric dimensions along conveyor X-axis */
+    const POS = {
+      CONVEYOR_START: -5.2,
+      PHOTO_SENSOR: -2.8,
+      TUNNEL_ENTRY: -2.0,
+      SCAN_POINT: -0.7,
+      TUNNEL_EXIT: 0.6,
+      REJECTOR: 2.4,
+      CONVEYOR_END: 5.4,
+      QUARANTINE_Z: 1.55
+    };
+
+    let scene, camera, renderer, controls;
+    let beltMesh, encoderWheel;
+    let machineRoot, gantryFrame, tunnelMesh, sensorHeadGroup, cameraLensMesh, nirBeamsGroup, uvBeamsGroup, edgeAIBox;
+    let photoSensorBeam, rejectorNozzle, airJetBlast;
+    let spectralCubeMesh;
+    const productObjects = [];
+    const annotationElements = [];
+    let spectralChart, heatmapCtx;
+
+    function init3D() {
+      const container = document.getElementById('canvas-container');
+      const width = container.clientWidth || window.innerWidth;
+      const height = container.clientHeight || window.innerHeight;
+
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x070b12);
+      scene.fog = new THREE.FogExp2(0x070b12, 0.04);
+
+      camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 100);
+      camera.position.set(0, 3.6, 6.2);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+      renderer.setSize(width, height);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.15;
+      container.appendChild(renderer.domElement);
+
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+      controls.maxPolarAngle = Math.PI / 2 - 0.02;
+      controls.minDistance = 1.6;
+      controls.maxDistance = 16;
+      controls.target.set(0, 0.95, 0);
+
+      // Ambient factory light
+      const ambientLight = new THREE.AmbientLight(0x1e293b, 1.4);
+      scene.add(ambientLight);
+
+      // Overhead high-bay industrial LED luminaire
+      const keyLight = new THREE.DirectionalLight(0xffffff, 1.8);
+      keyLight.position.set(4, 9, 4.5);
+      keyLight.castShadow = true;
+      keyLight.shadow.mapSize.width = 2048;
+      keyLight.shadow.mapSize.height = 2048;
+      keyLight.shadow.bias = -0.0001;
+      scene.add(keyLight);
+
+      // Stainless specular reflection fill
+      const fillLight = new THREE.DirectionalLight(0x38bdf8, 0.7);
+      fillLight.position.set(-6, 5, -3);
+      scene.add(fillLight);
+
+      // Ground floor with factory grid
+      const floorGeo = new THREE.PlaneGeometry(36, 24);
+      const floorMat = new THREE.MeshStandardMaterial({ color: 0x0c1322, roughness: 0.35, metalness: 0.5 });
+      const floor = new THREE.Mesh(floorGeo, floorMat);
+      floor.rotation.x = -Math.PI / 2;
+      floor.position.y = -0.01;
+      floor.receiveShadow = true;
+      scene.add(floor);
+
+      const grid = new THREE.GridHelper(36, 36, 0x1e293b, 0x0f172a);
+      grid.position.y = 0.001;
+      scene.add(grid);
+
+      // Build Engineering Assemblies
+      buildConveyorAssembly();
+      buildSpectraGuardStation();
+      buildDetectionSensor();
+      buildPneumaticRejector();
+      buildQuarantineContainer();
+      buildHolographicSpectralCube();
+
+      window.addEventListener('resize', onWindowResize);
+    }
+
+    function buildConveyorAssembly() {
+      const group = new THREE.Group();
+      const stainlessMat = new THREE.MeshStandardMaterial({ color: 0xd1d5db, roughness: 0.22, metalness: 0.88 });
+      const motorMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.8 });
+
+      // Stainless Sanitary Conveyor Bed
+      const bed = new THREE.Mesh(new THREE.BoxGeometry(11.2, 0.16, 1.1), stainlessMat);
+      bed.position.set(0, 0.82, 0);
+      bed.castShadow = true;
+      bed.receiveShadow = true;
+      group.add(bed);
+
+      // Food-Grade Blue Polyurethane Belt
+      beltMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(11.0, 0.03, 0.94),
+        new THREE.MeshStandardMaterial({ color: 0x005596, roughness: 0.45, metalness: 0.05 })
+      );
+      beltMesh.position.set(0, 0.91, 0);
+      beltMesh.receiveShadow = true;
+      group.add(beltMesh);
+
+      // Sanitary Guide Rails
+      const railGeo = new THREE.BoxGeometry(11.2, 0.08, 0.04);
+      const r1 = new THREE.Mesh(railGeo, stainlessMat);
+      r1.position.set(0, 0.96, 0.5);
+      const r2 = new THREE.Mesh(railGeo, stainlessMat);
+      r2.position.set(0, 0.96, -0.5);
+      group.add(r1, r2);
+
+      // Support Legs
+      [-4.6, -1.8, 1.8, 4.6].forEach(x => {
+        [-0.45, 0.45].forEach(z => {
+          const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.82, 16), stainlessMat);
+          leg.position.set(x, 0.41, z);
+          leg.castShadow = true;
+          group.add(leg);
+
+          const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.09, 0.04, 16), stainlessMat);
+          foot.position.set(x, 0.02, z);
+          group.add(foot);
+        });
+      });
+
+      // SEW-Eurodrive Helical Bevel Gearmotor
+      const motor = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.28, 0.4), motorMat);
+      motor.position.set(-5.3, 0.82, 0.65);
+      group.add(motor);
+
+      // SICK DBS60 Rotary Shaft Encoder
+      const encGroup = new THREE.Group();
+      encGroup.position.set(POS.SCAN_POINT - 0.9, 0.75, 0.58);
+      const encBody = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.07, 0.07, 0.12, 24),
+        new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.3, metalness: 0.8 })
+      );
+      encBody.rotation.x = Math.PI / 2;
+      encGroup.add(encBody);
+
+      encoderWheel = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.09, 0.09, 0.02, 16),
+        new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.4, metalness: 0.9 })
+      );
+      encoderWheel.rotation.x = Math.PI / 2;
+      encoderWheel.position.z = -0.06;
+      encGroup.add(encoderWheel);
+      group.add(encGroup);
+
+      scene.add(group);
+      createAnnotation('label-encoder', 'Rotary Shaft Encoder (1024 PPR)', new THREE.Vector3(POS.SCAN_POINT - 0.9, 0.95, 0.6));
+    }
+
+    function buildSpectraGuardStation() {
+      machineRoot = new THREE.Group();
+      machineRoot.position.set(POS.SCAN_POINT, 0.9, 0);
+
+      const aluminumExtrusionMat = new THREE.MeshStandardMaterial({ color: 0xc4c7c9, roughness: 0.42, metalness: 0.85 });
+      const uprightGeo = new THREE.BoxGeometry(0.09, 1.45, 0.09);
+      
+      gantryFrame = new THREE.Group();
+      const l1 = new THREE.Mesh(uprightGeo, aluminumExtrusionMat); l1.position.set(-0.7, 0.72, -0.7);
+      const l2 = new THREE.Mesh(uprightGeo, aluminumExtrusionMat); l2.position.set(0.7, 0.72, -0.7);
+      const l3 = new THREE.Mesh(uprightGeo, aluminumExtrusionMat); l3.position.set(-0.7, 0.72, 0.7);
+      const l4 = new THREE.Mesh(uprightGeo, aluminumExtrusionMat); l4.position.set(0.7, 0.72, 0.7);
+      
+      const topCross1 = new THREE.Mesh(new THREE.BoxGeometry(1.49, 0.09, 0.09), aluminumExtrusionMat); topCross1.position.set(0, 1.4, -0.7);
+      const topCross2 = new THREE.Mesh(new THREE.BoxGeometry(1.49, 0.09, 0.09), aluminumExtrusionMat); topCross2.position.set(0, 1.4, 0.7);
+      gantryFrame.add(l1, l2, l3, l4, topCross1, topCross2);
+      machineRoot.add(gantryFrame);
+
+      // Blackout Optical Inspection Tunnel
+      tunnelMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(1.65, 0.68, 1.28),
+        new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.65, metalness: 0.75, transparent: true, opacity: 0.95 })
+      );
+      tunnelMesh.position.set(0, 0.35, 0);
+      tunnelMesh.castShadow = true;
+      machineRoot.add(tunnelMesh);
+
+      // Smart Sensor Head Industrial Enclosure (Charcoal RAL 7016)
+      sensorHeadGroup = new THREE.Group();
+      sensorHeadGroup.position.set(0, 0.98, 0);
+
+      const enclosureMat = new THREE.MeshStandardMaterial({ color: 0x2b2e33, roughness: 0.68, metalness: 0.2 });
+      const enclosure = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.58, 0.78), enclosureMat);
+      sensorHeadGroup.add(enclosure);
+
+      // Machined Cyan Trim Band
+      const trim = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.03, 0.8), new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.25, metalness: 0.8 }));
+      trim.position.y = 0.16;
+      sensorHeadGroup.add(trim);
+
+      // Pushbroom SWIR Hyperspectral Camera Body & C-Mount Lens
+      const camBody = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 0.28), new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.2, metalness: 0.9 }));
+      camBody.position.set(0, -0.04, 0);
+      sensorHeadGroup.add(camBody);
+
+      cameraLensMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.08, 0.16, 32), new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.18, metalness: 0.95 }));
+      cameraLensMesh.position.set(0, -0.22, 0);
+      sensorHeadGroup.add(cameraLensMesh);
+
+      // Dual 45° Cross-Angle NIR Halogen Reflector Array
+      nirBeamsGroup = new THREE.Group();
+      const nirMat = new THREE.MeshStandardMaterial({ color: 0xf43f5e, emissive: 0xbe123c, emissiveIntensity: 0.85 });
+      const nb1 = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.06, 0.08), nirMat);
+      nb1.position.set(0, -0.2, -0.26); nb1.rotation.x = Math.PI / 5;
+      const nb2 = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.06, 0.08), nirMat);
+      nb2.position.set(0, -0.2, 0.26); nb2.rotation.x = -Math.PI / 5;
+      sensorHeadGroup.add(nb1, nb2);
+
+      const nirCone = new THREE.Mesh(new THREE.ConeGeometry(0.48, 0.88, 32, 1, true), new THREE.MeshBasicMaterial({ color: 0xf43f5e, transparent: true, opacity: 0.2, side: THREE.DoubleSide }));
+      nirCone.position.set(0, -0.55, 0); nirCone.rotation.x = Math.PI;
+      nirBeamsGroup.add(nirCone);
+      sensorHeadGroup.add(nirBeamsGroup);
+
+      // 365nm Narrowband UV-A LED Array
+      uvBeamsGroup = new THREE.Group();
+      const uvMat = new THREE.MeshStandardMaterial({ color: 0x8b5cf6, emissive: 0x6d28d9, emissiveIntensity: 1.1 });
+      const uvLEDs = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.04, 0.06), uvMat);
+      uvLEDs.position.set(0.24, -0.2, 0);
+      sensorHeadGroup.add(uvLEDs);
+
+      const uvCone = new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.88, 24, 1, true), new THREE.MeshBasicMaterial({ color: 0x8b5cf6, transparent: true, opacity: 0.16, side: THREE.DoubleSide }));
+      uvCone.position.set(0, -0.55, 0); uvCone.rotation.x = Math.PI;
+      uvBeamsGroup.add(uvCone);
+      sensorHeadGroup.add(uvBeamsGroup);
+
+      // Industrial Edge AI Processor Box
+      edgeAIBox = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.14, 0.24), new THREE.MeshStandardMaterial({ color: 0x1e1b4b, roughness: 0.35, metalness: 0.85 }));
+      edgeAIBox.position.set(0, 0.18, 0);
+      sensorHeadGroup.add(edgeAIBox);
+
+      machineRoot.add(sensorHeadGroup);
+      scene.add(machineRoot);
+
+      createAnnotation('label-sensor-head', 'Smart Sensor Head (SWIR HSI + NIR/UV-A)', new THREE.Vector3(POS.SCAN_POINT, 2.1, 0));
+    }
+
+    function buildDetectionSensor() {
+      const g = new THREE.Group();
+      g.position.set(POS.PHOTO_SENSOR, 0.95, 0);
+
+      const bracketMat = new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.85 });
+      const m1 = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.25), bracketMat); m1.position.set(0, 0.08, -0.52);
+      const m2 = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.25), bracketMat); m2.position.set(0, 0.08, 0.52);
+
+      const sMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.2 });
+      const s1 = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.05, 0.04), sMat); s1.position.set(0, 0.15, -0.52);
+      const s2 = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.05, 0.04), sMat); s2.position.set(0, 0.15, 0.52);
+
+      photoSensorBeam = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.003, 0.003, 1.04, 8),
+        new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.85 })
+      );
+      photoSensorBeam.rotation.x = Math.PI / 2;
+      photoSensorBeam.position.set(0, 0.15, 0);
+
+      g.add(m1, m2, s1, s2, photoSensorBeam);
+      scene.add(g);
+      createAnnotation('label-photo', 'Through-Beam Optical Sensor', new THREE.Vector3(POS.PHOTO_SENSOR, 1.25, 0.55));
+    }
+
+    function buildPneumaticRejector() {
+      const g = new THREE.Group();
+      g.position.set(POS.REJECTOR, 0.95, -0.52);
+
+      const valve = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.18, 0.12), new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.9 }));
+      valve.position.y = 0.12;
+
+      rejectorNozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.18, 16), new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.95 }));
+      rejectorNozzle.rotation.x = Math.PI / 2;
+      rejectorNozzle.position.set(0, 0.1, 0.12);
+
+      airJetBlast = new THREE.Mesh(
+        new THREE.ConeGeometry(0.18, 0.75, 16, 1, true),
+        new THREE.MeshBasicMaterial({ color: 0xbae6fd, transparent: true, opacity: 0.0, side: THREE.DoubleSide })
+      );
+      airJetBlast.rotation.x = -Math.PI / 2;
+      airJetBlast.position.set(0, 0.1, 0.5);
+
+      g.add(valve, rejectorNozzle, airJetBlast);
+      scene.add(g);
+      createAnnotation('label-rejector', 'Pneumatic Venturi Air-Jet Diverter', new THREE.Vector3(POS.REJECTOR, 1.3, -0.55));
+    }
+
+    function buildQuarantineContainer() {
+      const g = new THREE.Group();
+      g.position.set(POS.REJECTOR, 0.38, POS.QUARANTINE_Z);
+
+      const binMat = new THREE.MeshStandardMaterial({ color: 0xb0bec5, roughness: 0.2, metalness: 0.88 });
+      const bin = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.72, 0.78), binMat);
+      bin.castShadow = true;
+      g.add(bin);
+
+      const inner = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.65, 0.72), new THREE.MeshStandardMaterial({ color: 0x1e293b }));
+      inner.position.y = 0.05;
+      g.add(inner);
+
+      // UHMW Sanitary Chute
+      const chute = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.02, 0.62), binMat);
+      chute.position.set(0, 0.42, -0.42);
+      chute.rotation.x = -Math.PI / 5;
+      g.add(chute);
+
+      scene.add(g);
+      createAnnotation('label-quarantine', 'Quarantine / Secondary Lab Bin', new THREE.Vector3(POS.REJECTOR, 0.95, POS.QUARANTINE_Z));
+    }
+
+    function buildHolographicSpectralCube() {
+      const g = new THREE.Group();
+      g.position.set(POS.SCAN_POINT, 2.25, 0);
+
+      const numSlices = 7;
+      const sliceGeo = new THREE.PlaneGeometry(0.55, 0.44);
+      for (let i = 0; i < numSlices; i++) {
+        const color = new THREE.Color().setHSL(0.55 + (i / numSlices) * 0.35, 0.85, 0.6);
+        const slice = new THREE.Mesh(sliceGeo, new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.65, side: THREE.DoubleSide }));
+        slice.position.z = (i - numSlices / 2) * 0.08;
+        g.add(slice);
+      }
+
+      const wire = new THREE.LineSegments(
+        new THREE.EdgesGeometry(new THREE.BoxGeometry(0.58, 0.46, 0.62)),
+        new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.85 })
+      );
+      g.add(wire);
+
+      spectralCubeMesh = g;
+      spectralCubeMesh.visible = false;
+      scene.add(spectralCubeMesh);
+    }
+
+    class FoodProduct {
+      constructor(type, targetRisk) {
+        this.id = 'SG-' + String(++STATE.productCounter).padStart(6, '0');
+        this.type = type;
+        this.targetRisk = targetRisk;
+        this.x = POS.CONVEYOR_START;
+        this.y = 0.95;
+        this.z = (Math.random() - 0.5) * 0.12;
+        this.vx = 0;
+        this.vy = 0;
+        this.vz = 0;
+        this.detected = false;
+        this.scanned = false;
+        this.evaluated = false;
+        this.rejected = false;
+        this.isIsolated = false;
+        this.mesh = this.createMesh();
+        scene.add(this.mesh);
+      }
+
+      createMesh() {
+        const group = new THREE.Group();
+        let geom, mat;
+
+        if (this.type === 'poultry') {
+          geom = new THREE.DodecahedronGeometry(0.14, 2);
+          const pos = geom.attributes.position;
+          for (let i = 0; i < pos.count; i++) {
+            const px = pos.getX(i);
+            const py = pos.getY(i);
+            const pz = pos.getZ(i);
+            pos.setXYZ(i, px * 1.5, py * 0.65, pz * 1.05);
+          }
+          geom.computeVertexNormals();
+          mat = new THREE.MeshStandardMaterial({
+            color: this.targetRisk === 'highrisk' ? 0xe2c2b3 : 0xfad5c8,
+            roughness: 0.35, metalness: 0.05
+          });
+        } else if (this.type === 'greens') {
+          geom = new THREE.CylinderGeometry(0.12, 0.08, 0.28, 8);
+          mat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.6 });
+        } else {
+          geom = new THREE.BoxGeometry(0.24, 0.12, 0.2);
+          mat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.8 });
+        }
+
+        const mesh = new THREE.Mesh(geom, mat);
+        mesh.castShadow = true;
+        group.add(mesh);
+
+        const highlightWire = new THREE.LineSegments(
+          new THREE.EdgesGeometry(new THREE.BoxGeometry(0.36, 0.18, 0.3)),
+          new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0 })
+        );
+        highlightWire.name = 'highlightWire';
+        group.add(highlightWire);
+
+        group.position.set(this.x, this.y, this.z);
+        return group;
+      }
+
+      update(dt) {
+        if (!this.isIsolated) {
+          this.x += STATE.conveyorSpeed * STATE.speed * dt;
+          this.mesh.position.x = this.x;
+          this.mesh.position.z = this.z;
+
+          // Sensor Trigger
+          if (!this.detected && this.x >= POS.PHOTO_SENSOR) {
+            this.detected = true;
+            onProductDetected(this);
+          }
+
+          // Scanning Chamber
+          if (this.x >= POS.SCAN_POINT - 0.45 && this.x <= POS.SCAN_POINT + 0.45) {
+            this.performScanning();
+          }
+
+          // Edge AI Inference
+          if (this.scanned && !this.evaluated && this.x >= POS.SCAN_POINT) {
+            this.evaluated = true;
+            EdgeAIInferenceEngine.evaluate(this);
+          }
+
+          // Pneumatic Ejection
+          if (this.targetRisk === 'highrisk' && !this.rejected && this.x >= POS.REJECTOR) {
+            this.executeRejection();
+          }
+
+          if (this.x > POS.CONVEYOR_END) {
+            this.destroy();
+            return false;
+          }
+        } else {
+          // Ballistic ejection physics
+          this.mesh.position.x += this.vx * dt;
+          this.mesh.position.y += this.vy * dt;
+          this.mesh.position.z += this.vz * dt;
+          this.vy -= 9.8 * dt;
+
+          if (this.mesh.position.y <= 0.6) {
+            this.mesh.position.y = 0.6;
+            this.vx = 0; this.vy = 0; this.vz = 0;
+          }
+        }
+        return true;
+      }
+
+      performScanning() {
+        if (!this.scanned) {
+          STATE.activeScannedProduct = this;
+          updateFSM(SIM_FSM.SCANNING);
+          if (spectralCubeMesh) {
+            spectralCubeMesh.visible = true;
+            spectralCubeMesh.position.x = this.x;
+          }
+          const wire = this.mesh.getObjectByName('highlightWire');
+          if (wire) wire.material.opacity = 0.9;
+        }
+      }
+
+      executeRejection() {
+        this.rejected = true;
+        this.isIsolated = true;
+        STATE.isolatedCount++;
+        const elIsolated = document.getElementById('count-isolated');
+        if (elIsolated) elIsolated.textContent = STATE.isolatedCount;
+        updateFSM(SIM_FSM.REJECT);
+
+        if (airJetBlast) {
+          airJetBlast.material.opacity = 0.9;
+          setTimeout(() => { if (airJetBlast) airJetBlast.material.opacity = 0; }, 160);
+        }
+
+        this.vx = 0.35;
+        this.vy = 1.7;
+        this.vz = 3.2;
+
+        logMarquee(`[PNEUMATIC VALVE TRIP] High-speed Festo solenoid actuated. Unit #${this.id} isolated into quarantine bin.`);
+        setTimeout(() => updateFSM(SIM_FSM.IDLE), 1000);
+      }
+
+      destroy() {
+        scene.remove(this.mesh);
+        const idx = productObjects.indexOf(this);
+        if (idx > -1) productObjects.splice(idx, 1);
+      }
+    }
+
+    class EdgeAIInferenceEngine {
+      static evaluate(product) {
+        updateFSM(SIM_FSM.AI_INFERENCE);
+
+        setTimeout(() => {
+          updateFSM(SIM_FSM.DECISION);
+          STATE.scannedCount++;
+          const elScanned = document.getElementById('count-scanned');
+          if (elScanned) elScanned.textContent = STATE.scannedCount;
+
+          let anomalyScore = 0.08;
+          let riskScore = 12;
+          const confidence = 0.96;
+          let stateLabel = 'NORMAL';
+          let actionLabel = 'CONTINUE_LINE';
+
+          if (product.targetRisk === 'normal') {
+            riskScore = Math.floor(6 + Math.random() * 12);
+            anomalyScore = (riskScore / 100).toFixed(2);
+            STATE.normalCount++;
+            const elNorm = document.getElementById('count-normal');
+            if (elNorm) elNorm.textContent = STATE.normalCount;
+          } else if (product.targetRisk === 'suspect') {
+            riskScore = Math.floor(46 + Math.random() * 18);
+            anomalyScore = (riskScore / 100).toFixed(2);
+            stateLabel = 'SUSPECT';
+            actionLabel = 'FLAG_SECONDARY_INSPECT';
+            STATE.suspectCount++;
+            const elSusp = document.getElementById('count-suspect');
+            if (elSusp) elSusp.textContent = STATE.suspectCount;
+          } else {
+            riskScore = Math.floor(82 + Math.random() * 14);
+            anomalyScore = (riskScore / 100).toFixed(2);
+            stateLabel = 'HIGH_RISK';
+            actionLabel = 'ISOLATE_PNEUMATIC';
+          }
+
+          product.scanned = true;
+          STATE.targetedProduct = product;
+
+          const payload = {
+            productId: product.id,
+            state: stateLabel,
+            anomalyScore: parseFloat(anomalyScore),
+            riskIndex: (riskScore / 100),
+            confidence: confidence,
+            inspectionAction: actionLabel
+          };
+
+          const elJson = document.getElementById('telemetry-json');
+          if (elJson) elJson.textContent = JSON.stringify(payload, null, 2);
+
+          updateLiveEvalCard(product.id, riskScore, stateLabel);
+          updateSpectralCurves(product.targetRisk);
+          updateHeatmapVisual(product.targetRisk);
+
+          logMarquee(`[EDGE INFERENCE COMPLETED] #${product.id} evaluated as ${stateLabel} (Risk: ${riskScore}%). Action: ${actionLabel}`);
+
+          if (product.targetRisk !== 'highrisk') {
+            setTimeout(() => updateFSM(SIM_FSM.IDLE), 800);
+          }
+        }, 120);
+      }
+    }
+
+    function onProductDetected(product) {
+      updateFSM(SIM_FSM.PRODUCT_DETECTED);
+      if (photoSensorBeam) {
+        photoSensorBeam.material.opacity = 0.2;
+        setTimeout(() => { if (photoSensorBeam) photoSensorBeam.material.opacity = 0.85; }, 140);
+      }
+
+      const elProd = document.getElementById('eval-product-id');
+      if (elProd) elProd.textContent = product.id;
+      logMarquee(`[OPTICAL EYE TRIGGER] Product #${product.id} ingress detected. Priming linescan window.`);
+    }
+
+    function updateFSM(state) {
+      STATE.currentState = state;
+      const ids = ['fsm-idle', 'fsm-detect', 'fsm-scan', 'fsm-ai', 'fsm-decide', 'fsm-reject'];
+      ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.className = 'px-2 py-0.5 rounded bg-slate-900 text-slate-500 border border-slate-800';
+        }
+      });
+
+      let activeId = 'fsm-idle';
+      if (state === SIM_FSM.PRODUCT_DETECTED) activeId = 'fsm-detect';
+      else if (state === SIM_FSM.SCANNING) activeId = 'fsm-scan';
+      else if (state === SIM_FSM.AI_INFERENCE) activeId = 'fsm-ai';
+      else if (state === SIM_FSM.DECISION) activeId = 'fsm-decide';
+      else if (state === SIM_FSM.REJECT) activeId = 'fsm-reject';
+
+      const activeEl = document.getElementById(activeId);
+      if (activeEl) {
+        activeEl.className = 'px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/60 font-bold';
+      }
+    }
+
+    function updateLiveEvalCard(productId, score, stateLabel) {
+      const scoreTxt = document.getElementById('eval-risk-score');
+      const bar = document.getElementById('eval-risk-bar');
+      const badge = document.getElementById('eval-status-badge');
+
+      if (scoreTxt) scoreTxt.textContent = `${score}%`;
+      if (bar) bar.style.width = `${score}%`;
+
+      if (badge && bar) {
+        if (stateLabel === 'NORMAL') {
+          bar.className = 'h-full bg-emerald-500 transition-all duration-300';
+          badge.className = 'px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800';
+          badge.textContent = 'PASS - SAFE';
+        } else if (stateLabel === 'SUSPECT') {
+          bar.className = 'h-full bg-amber-500 transition-all duration-300';
+          badge.className = 'px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-800';
+          badge.textContent = 'SUSPECT TIER';
+        } else {
+          bar.className = 'h-full bg-rose-500 transition-all duration-300';
+          badge.className = 'px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-950 text-rose-300 border border-rose-800 animate-pulse';
+          badge.textContent = 'HIGH RISK';
+        }
+      }
+    }
+
+    function initChartsAndHeatmap() {
+      // Right-side telemetry panel (Spectral Curve, Surface Anomaly Heatmap, PLC Encoder & Shift Batch Metrics) has been removed.
+    }
+
+    function generateSimulatedCurve(tier, count) {
+      return [];
+    }
+
+    function updateSpectralCurves(tier) {
+      // Omitted with panel removal
+    }
+
+    function updateHeatmapVisual(tier) {
+      // Omitted with panel removal
+    }
+
+    function createAnnotation(id, title, worldPos) {
+      const container = document.getElementById('labels-container');
+      if (!container) return;
+      const marker = document.createElement('div');
+      marker.id = id;
+      marker.className = 'annotation-marker absolute flex items-center space-x-1 px-2 py-0.5 rounded bg-slate-950/85 border border-slate-700 text-[10px] font-mono text-cyan-300 shadow-md backdrop-blur-sm pointer-events-auto cursor-pointer hover:border-cyan-400';
+      marker.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-cyan-400 mr-1 animate-pulse"></span>${title}`;
+      marker.addEventListener('click', () => {
+        if (controls) {
+          controls.target.copy(worldPos);
+          camera.position.set(worldPos.x + 0.8, worldPos.y + 1.2, worldPos.z + 1.8);
+        }
+      });
+      container.appendChild(marker);
+      annotationElements.push({ element: marker, worldPos: worldPos });
+    }
+
+    function updateAnnotations() {
+      if (!camera || annotationElements.length === 0) return;
+      const widthHalf = window.innerWidth / 2;
+      const heightHalf = window.innerHeight / 2;
+      annotationElements.forEach(item => {
+        const tempV = item.worldPos.clone();
+        tempV.project(camera);
+        if (tempV.z > 1) {
+          item.element.style.display = 'none';
+        } else {
+          item.element.style.display = 'flex';
+          const x = (tempV.x * widthHalf) + widthHalf;
+          const y = -(tempV.y * heightHalf) + heightHalf;
+          item.element.style.left = `${x}px`;
+          item.element.style.top = `${y}px`;
+        }
+      });
+    }
+
+    function startPrototypeDemo() {
+      STATE.demoActive = true;
+      STATE.demoTimer = 0;
+      STATE.demoPhase = 0;
+
+      const banner = document.getElementById('engineering-narrative-banner');
+      if (banner) banner.classList.remove('hidden');
+
+      const steps = [
+        {
+          t: 0,
+          title: "STAGE 01: SYSTEM OVERVIEW & STABLE INFEED",
+          desc: "Sanitary AISI 304 conveyor operating at 1.20 m/s with SpectraGuard SG-1700X gantry and automated downstream diverter.",
+          cam: () => setCameraView('overview'),
+          action: () => spawnSpecificProduct('highrisk')
+        },
+        {
+          t: 6,
+          title: "STAGE 02: PHOTOELECTRIC OPTICAL TRIGGER",
+          desc: "Leading edge crosses through-beam photoelectric sensor; registers product arrival and primes linescan window.",
+          cam: () => {
+            controls.target.set(POS.PHOTO_SENSOR, 1.0, 0);
+            camera.position.set(POS.PHOTO_SENSOR - 0.4, 1.8, 2.0);
+          }
+        },
+        {
+          t: 13,
+          title: "STAGE 03-04: CONTROLLED NIR/UV-A & PUSHBROOM CAPTURE",
+          desc: "Substrate traverses dark inspection tunnel under dual 45° NIR halogen arrays and 365nm UV-A LEDs. InGaAs sensor records 224 bands.",
+          cam: () => setCameraView('sensor')
+        },
+        {
+          t: 22,
+          title: "STAGE 05-07: HYPERSPECTRAL DATACUBE & SPECTRAL SIGNATURE",
+          desc: "Continuous linescan generates a 3D volumetric datacube (X × Y × λ). Real-time chemometric signature extracted across 900–1700nm.",
+          cam: () => {
+            controls.target.set(POS.SCAN_POINT, 1.3, 0);
+            camera.position.set(POS.SCAN_POINT + 0.3, 1.8, 1.4);
+          }
+        },
+        {
+          t: 33,
+          title: "STAGE 08-11: EDGE AI INFERENCE & PLC SCREENING TELEGRAM",
+          desc: "Jetson Orin executes radiometric calibration and 1D-CNN inference in <10ms; generates High-Risk screening result sent to Siemens PLC.",
+          cam: () => setCameraView('overview')
+        },
+        {
+          t: 44,
+          title: "STAGE 12-13: SHAFT ENCODER TRACKING & PNEUMATIC AIR-JET",
+          desc: "1024 PPR encoder decrements millimetric belt distance. Festo fast solenoid actuates dual venturi nozzles, deflecting suspect item.",
+          cam: () => setCameraView('rejector')
+        },
+        {
+          t: 55,
+          title: "STAGE 14-15: QUARANTINE CATCH & REAL-TIME AUDIT LOGGING",
+          desc: "Suspect fillet safely caught in electropolished stainless hopper for secondary PCR confirmation. SCADA shift metrics updated in real time.",
+          cam: () => {
+            controls.target.set(POS.REJECTOR, 0.8, POS.QUARANTINE_Z);
+            camera.position.set(POS.REJECTOR + 0.8, 1.7, POS.QUARANTINE_Z + 1.2);
+          }
+        }
+      ];
+
+      steps.forEach(s => {
+        setTimeout(() => {
+          if (!STATE.demoActive) return;
+          const titleEl = document.getElementById('demo-step-title');
+          const descEl = document.getElementById('demo-step-desc');
+          if (titleEl) titleEl.textContent = s.title;
+          if (descEl) descEl.textContent = s.desc;
+          if (s.cam) s.cam();
+          if (s.action) s.action();
+        }, s.t * 1000);
+      });
+
+      setTimeout(() => {
+        STATE.demoActive = false;
+        if (banner) banner.classList.add('hidden');
+        setCameraView('overview');
+        logMarquee('🏁 [DEMONSTRATION COMPLETE] Continuous automated inline triage cycle verified.');
+      }, 65000);
+    }
+
+    let lastTime = performance.now();
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const now = performance.now();
+      const dt = Math.min((now - lastTime) / 1000, 0.1);
+      lastTime = now;
+
+      if (STATE.demoActive) {
+        STATE.demoTimer += dt;
+        const timerTxt = document.getElementById('demo-timer-txt');
+        if (timerTxt) timerTxt.textContent = `T: ${Math.floor(STATE.demoTimer).toString().padStart(2, '0')}s / 65s`;
+      }
+
+      if (STATE.running) {
+        // Rotary shaft encoder rotation
+        if (encoderWheel) {
+          encoderWheel.rotation.y += STATE.conveyorSpeed * STATE.speed * dt * 4.2;
+        }
+
+        // Exploded view vertical separation
+        const targetExp = STATE.exploded ? 1.0 : 0.0;
+        STATE.explodedProgress = THREE.MathUtils.lerp(STATE.explodedProgress, targetExp, 0.08);
+
+        if (sensorHeadGroup && tunnelMesh) {
+          sensorHeadGroup.position.y = 0.98 + STATE.explodedProgress * 0.92;
+          tunnelMesh.position.y = 0.35 + STATE.explodedProgress * 0.36;
+          if (edgeAIBox) edgeAIBox.position.y = 0.18 + STATE.explodedProgress * 0.42;
+        }
+
+        // Continuous autoloader infeed
+        if (STATE.autoloader) {
+          STATE.spawnTimer += dt * STATE.speed;
+          if (STATE.spawnTimer >= STATE.spawnInterval) {
+            STATE.spawnTimer = 0;
+            const r = Math.random();
+            const targetTier = r > 0.74 ? (r > 0.9 ? 'highrisk' : 'suspect') : 'normal';
+            productObjects.push(new FoodProduct(STATE.substrateType, targetTier));
+          }
+        }
+
+        // Update Products
+        for (let i = productObjects.length - 1; i >= 0; i--) {
+          const p = productObjects[i];
+          p.update(dt);
+        }
+
+        // Real-time Rotary Encoder & Distance to Rejector tracking
+        if (STATE.targetedProduct && !STATE.targetedProduct.isIsolated) {
+          const dist = Math.max(0, POS.REJECTOR - STATE.targetedProduct.x);
+          const eta = dist / (STATE.conveyorSpeed * STATE.speed);
+          const elDist = document.getElementById('plc-dist-reject');
+          const elEta = document.getElementById('plc-eta-trigger');
+          if (elDist) elDist.textContent = dist.toFixed(2) + ' m';
+          if (elEta) elEta.textContent = eta.toFixed(2) + ' s';
+        }
+
+        // Hyperspectral cube animation
+        if (spectralCubeMesh && spectralCubeMesh.visible) {
+          spectralCubeMesh.rotation.y += dt * 0.85;
+          if (!STATE.activeScannedProduct || STATE.activeScannedProduct.x > POS.SCAN_POINT + 0.5) {
+            spectralCubeMesh.visible = false;
+            STATE.activeScannedProduct = null;
+          }
+        }
+      }
+
+      if (controls) controls.update();
+      updateAnnotations();
+      if (renderer && scene && camera) renderer.render(scene, camera);
+    }
+
+    function setCameraView(preset) {
+      if (!controls || !camera) return;
+      if (preset === 'overview') {
+        camera.position.set(0, 3.6, 6.2);
+        controls.target.set(0, 0.95, 0);
+      } else if (preset === 'sensor') {
+        camera.position.set(POS.SCAN_POINT + 0.5, 2.1, 1.7);
+        controls.target.set(POS.SCAN_POINT, 1.4, 0);
+      } else if (preset === 'cutaway') {
+        camera.position.set(POS.SCAN_POINT + 0.2, 1.5, 1.0);
+        controls.target.set(POS.SCAN_POINT, 1.1, 0);
+      } else if (preset === 'rejector') {
+        camera.position.set(POS.REJECTOR + 0.6, 1.8, 1.9);
+        controls.target.set(POS.REJECTOR, 0.9, 0.4);
+      }
+    }
+
+    function spawnSpecificProduct(tier) {
+      productObjects.push(new FoodProduct(STATE.substrateType, tier));
+      logMarquee(`[MANUAL FEED] Ingested single ${tier.toUpperCase()} substrate onto conveyor.`);
+    }
+
+    function logMarquee(msg) {
+      const el = document.getElementById('log-marquee');
+      if (el) el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    }
+
+    function toggleModal(id) {
+      const el = document.getElementById(id);
+      if (el) el.classList.toggle('hidden');
+    }
+
+    function onWindowResize() {
+      const container = document.getElementById('canvas-container');
+      if (!container || !camera || !renderer) return;
+      camera.aspect = container.clientWidth / container.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(container.clientWidth, container.clientHeight);
+    }
+
+    function highlightSubstrateBtn(target) {
+      ['sub-poultry', 'sub-greens', 'sub-bakery'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.className = 'py-1 px-1 rounded bg-slate-800/80 border border-slate-700 text-slate-300 hover:bg-slate-700';
+      });
+      if (target) target.className = 'py-1 px-1 rounded bg-cyan-950/80 border border-cyan-500/60 text-cyan-300 font-medium';
+    }
+
+    window.addEventListener('load', function() {
+      init3D();
+      initChartsAndHeatmap();
+      if (window.lucide) {
+        window.lucide.createIcons();
+      }
+
+      // UI View Buttons
+      document.getElementById('view-overview').onclick = () => setCameraView('overview');
+      document.getElementById('view-sensor').onclick = () => setCameraView('sensor');
+      document.getElementById('view-cutaway').onclick = () => setCameraView('cutaway');
+      document.getElementById('view-rejector').onclick = () => setCameraView('rejector');
+
+      // Demo & Exploded View
+      document.getElementById('btn-run-demo').onclick = startPrototypeDemo;
+      document.getElementById('btn-toggle-exploded').onclick = () => {
+        STATE.exploded = !STATE.exploded;
+        const label = document.getElementById('exploded-label');
+        if (label) label.textContent = STATE.exploded ? 'Assemble Machine' : 'Exploded View';
+      };
+
+      // Telemetry & Control Panel Toggles (Hidden by default for full 3D simulation)
+      const telemetryPanel = document.getElementById('right-telemetry-panel');
+      const telemetryBtn = document.getElementById('btn-toggle-telemetry');
+      if (telemetryBtn && telemetryPanel) {
+        telemetryBtn.onclick = () => {
+          telemetryPanel.classList.toggle('hidden');
+          const isVisible = !telemetryPanel.classList.contains('hidden');
+          telemetryBtn.classList.toggle('bg-cyan-950/80', isVisible);
+          telemetryBtn.classList.toggle('border-cyan-500/60', isVisible);
+          if (isVisible && spectralChart) {
+            spectralChart.resize();
+          }
+        };
+      }
+
+      const controlsPanel = document.getElementById('left-controls-panel');
+      const controlsBtn = document.getElementById('btn-toggle-controls');
+      if (controlsBtn && controlsPanel) {
+        controlsBtn.onclick = () => {
+          controlsPanel.classList.toggle('hidden');
+          const isVisible = !controlsPanel.classList.contains('hidden');
+          controlsBtn.classList.toggle('bg-cyan-950/80', isVisible);
+          controlsBtn.classList.toggle('border-cyan-500/60', isVisible);
+        };
+      }
+
+      // Modals
+      document.getElementById('btn-open-pipeline').onclick = () => toggleModal('modal-pipeline');
+      document.getElementById('btn-close-pipeline').onclick = () => toggleModal('modal-pipeline');
+      document.getElementById('btn-open-specs').onclick = () => toggleModal('modal-specs');
+      document.getElementById('btn-close-specs').onclick = () => toggleModal('modal-specs');
+
+      // Fullscreen
+      document.getElementById('btn-fullscreen').onclick = () => {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(() => {});
+        } else {
+          document.exitFullscreen().catch(() => {});
+        }
+      };
+
+      // Injectors
+      document.getElementById('btn-inject-normal').onclick = () => spawnSpecificProduct('normal');
+      document.getElementById('btn-inject-suspect').onclick = () => spawnSpecificProduct('suspect');
+      document.getElementById('btn-inject-highrisk').onclick = () => spawnSpecificProduct('highrisk');
+
+      // Substrates
+      document.getElementById('sub-poultry').onclick = (e) => {
+        STATE.substrateType = 'poultry';
+        highlightSubstrateBtn(e.currentTarget);
+      };
+      document.getElementById('sub-greens').onclick = (e) => {
+        STATE.substrateType = 'greens';
+        highlightSubstrateBtn(e.currentTarget);
+      };
+      document.getElementById('sub-bakery').onclick = (e) => {
+        STATE.substrateType = 'bakery';
+        highlightSubstrateBtn(e.currentTarget);
+      };
+
+      // Autoloader Switch
+      const autoCheckbox = document.getElementById('toggle-autoloader');
+      const autoVisual = document.getElementById('autoloader-toggle-visual');
+      const autoKnob = document.getElementById('autoloader-knob');
+      if (autoCheckbox && autoVisual && autoKnob) {
+        autoCheckbox.addEventListener('change', (e) => {
+          STATE.autoloader = e.target.checked;
+          if (STATE.autoloader) {
+            autoVisual.className = 'w-8 h-4 bg-cyan-600 rounded-full relative transition-colors';
+            autoKnob.style.transform = 'translateX(0px)';
+          } else {
+            autoVisual.className = 'w-8 h-4 bg-slate-700 rounded-full relative transition-colors';
+            autoKnob.style.transform = 'translateX(-16px)';
+          }
+        });
+      }
+
+      // Speed control
+      const speedSelect = document.getElementById('speed-select');
+      if (speedSelect) {
+        speedSelect.onchange = (e) => {
+          STATE.speed = parseFloat(e.target.value);
+          const beltSpeedEl = document.getElementById('plc-belt-speed');
+          if (beltSpeedEl) beltSpeedEl.textContent = (1.20 * STATE.speed).toFixed(2) + ' m/s';
+        };
+      }
+
+      // Play/Pause
+      const playPauseBtn = document.getElementById('btn-play-pause');
+      if (playPauseBtn) {
+        playPauseBtn.onclick = () => {
+          STATE.running = !STATE.running;
+          playPauseBtn.innerHTML = STATE.running ? '<i data-lucide="pause" class="w-4 h-4"></i>' : '<i data-lucide="play" class="w-4 h-4"></i>';
+          if (window.lucide) window.lucide.createIcons();
+        };
+      }
+
+      // Reset
+      const resetBtn = document.getElementById('btn-reset');
+      if (resetBtn) {
+        resetBtn.onclick = () => {
+          STATE.scannedCount = 0;
+          STATE.normalCount = 0;
+          STATE.suspectCount = 0;
+          STATE.isolatedCount = 0;
+          const elScanned = document.getElementById('count-scanned');
+          const elNorm = document.getElementById('count-normal');
+          const elSusp = document.getElementById('count-suspect');
+          const elIso = document.getElementById('count-isolated');
+          if (elScanned) elScanned.textContent = '0';
+          if (elNorm) elNorm.textContent = '0';
+          if (elSusp) elSusp.textContent = '0';
+          if (elIso) elIso.textContent = '0';
+          logMarquee('Batch telemetry cleared. System counter re-indexed.');
+        };
+      }
+
+      animate();
+    });
+  </script>
+</body>
+</html>
